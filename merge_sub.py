@@ -1,36 +1,51 @@
-name: 自动聚合节点并同步
+import requests
+import base64
+import os
+import datetime
 
-on:
-  push:
-    branches: [ "main" ] # 当你修改代码时触发
-  schedule:
-    - cron: '0 */4 * * *' # 【核心：定时器】每 4 小时自动在云端运行一次 (UTC时间)
+today = datetime.datetime.now()
+nodefree_date = today.strftime('%Y/%m/%Y%m%d')
+openrunner_date = today.strftime('%Y%m%d')
 
-jobs:
-  build:
-    runs-on: ubuntu-latest # 使用 Linux 云服务器运行
+SUBSCRIPTION_URLS = [
+    f"https://nodefree.org/dy/{nodefree_date}.txt",
+    "https://raw.githubusercontent.com/mfuu/v2ray/master/v2ray",
+    "https://raw.fastgit.org/freefq/free/master/v2",
+    "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt",
+    "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
+    f"https://freenode.openrunner.net/uploads/{openrunner_date}-v2ray.txt",
+    "https://tt.vg/freev2"
+]
 
-    steps:
-    - name: 检出仓库代码
-      uses: actions/checkout@v3
+OUTPUT_FILE = "my_custom_sub.txt"
 
-    - name: 安装 Python 环境
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+def merge_subscriptions():
+    all_nodes = []
+    for url in SUBSCRIPTION_URLS:
+        try:
+            response = requests.get(url, timeout=15)
+            if response.status_code == 200:
+                encoded_text = response.text.strip()
+                try:
+                    padding = len(encoded_text) % 4
+                    if padding:
+                        encoded_text += '=' * (4 - padding)
+                    decoded_bytes = base64.b64decode(encoded_text)
+                    decoded_text = decoded_bytes.decode('utf-8', errors='ignore')
+                except Exception:
+                    decoded_text = encoded_text
+                for line in decoded_text.splitlines():
+                    if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://')):
+                        all_nodes.append(line.strip())
+        except Exception:
+            pass
 
-    - name: 安装 requests 依赖库
-      run: |
-        pip install requests
+    if all_nodes:
+        unique_nodes = list(set(all_nodes))
+        merged_text = "\n".join(unique_nodes)
+        final_b64_string = base64.b64encode(merged_text.encode('utf-8')).decode('utf-8')
+        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+            f.write(final_b64_string)
 
-    - name: 运行聚合脚本
-      run: |
-        python merge_sub.py
-
-    - name: 将生成的 txt 文件自动提交回仓库
-      run: |
-        git config --local user.email "actions@github.com"
-        git config --local user.name "GitHub Actions"
-        git add my_custom_sub.txt
-        # 只有在文件内容确实发生变化时才提交，防止无意义的报错
-        git diff --cached --quiet || (git commit -m "自动更新节点池 [$(date '+%Y-%m-%d %H:%M:%S')]" && git push)
+if __name__ == "__main__":
+    merge_subscriptions()
