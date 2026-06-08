@@ -27,7 +27,7 @@ jobs:
 
     - name: 运行节点抓取与聚合脚本
       run: |
-        python merge_sub.py
+        python node_aggregator/merge_sub.py
 
     - name: 将最新生成的订阅文件提交回仓库
       run: |

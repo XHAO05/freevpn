@@ -1,0 +1,6 @@
+# 忽略所有可能包含密码的 json 或配置文件
+**/vps_config.json
+**/local/configs/
+
+# 忽略 Python 缓存
+__pycache__/
