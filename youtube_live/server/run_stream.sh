@@ -1,12 +1,12 @@
 #!/bin/bash
 
-STREAM_URL="rtmp://a.rtmp.youtube.com/live2/REPLACE_ME"
+STREAM_URL="rtmp://a.rtmp.youtube.com/live2/pcjq-f3ta-6vvw-hxc8-9701"
 
 ffmpeg \
 -re -f image2 -loop 1 -framerate 1 -i /root/live/current.png \
 -re -stream_loop -1 -i /root/live/bgm.mp3 \
 -map 0:v:0 -map 1:a:0 \
--vf "scale=1920:1080,format=yuv420p,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='%{localtime}':x=w-tw-40:y=40:fontsize=48:fontcolor=white:box=1:boxcolor=black@0.5" \
+-vf "scale=1920:1080,format=yuv420p,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='%{localtime}':x=(w-text_w)/2:y=h-text_h-35:fontcolor=white:fontsize=50:shadowx=2:shadowy=2:shadowcolor=black@0.8" \
 -r 30 \
 -c:v libx264 -preset ultrafast -tune stillimage \
 -b:v 3000k -maxrate 4000k -bufsize 8000k \
