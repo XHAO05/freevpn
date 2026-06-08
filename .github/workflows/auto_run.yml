@@ -36,3 +36,4 @@ jobs:
         git add node_aggregator/my_custom_sub.txt
         # 检查是否有新节点更新，有更新才会提交，避免空提交报错
         git diff --cached --quiet || (git commit -m "全自动更新节点池 [$(date '+%Y-%m-%d %H:%M:%S')]" && git push)
+    
