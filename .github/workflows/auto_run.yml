@@ -14,10 +14,10 @@ jobs:
 
     steps:
     - name: 检出仓库代码
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: 部署 Python 环境
-      uses: actions/setup-python@v4
+      uses: uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
@@ -33,6 +33,6 @@ jobs:
       run: |
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions自动更新"
-        git add my_custom_sub.txt
+        git add node_aggregator/my_custom_sub.txt
         # 检查是否有新节点更新，有更新才会提交，避免空提交报错
         git diff --cached --quiet || (git commit -m "全自动更新节点池 [$(date '+%Y-%m-%d %H:%M:%S')]" && git push)
