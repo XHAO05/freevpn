@@ -173,5 +173,4 @@ if __name__ == "__main__":
         print("❌ 糟糕，脚本运行中途报错了！")
         traceback.print_exc() 
         print("="*50 + "\n")
-    finally:
-        input("👉 运行结束，请按回车键 (Enter) 关闭窗口...")
+    

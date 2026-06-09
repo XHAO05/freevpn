@@ -42,4 +42,3 @@ def start_batch_render():
 
 if __name__ == "__main__":
     start_batch_render()
-    input("\n💡 按回车键退出...")
