@@ -1,22 +1,27 @@
 @echo off
-chcp 65001
 color 0A
 
 echo =======================================================
-echo   🚀 正在自动检查并安装必备的 Python 运行环境...
-echo   (如果是首次运行，可能需要1-2分钟下载，请耐心等待)
+echo   [INFO] Installing Python requirements via mirror...
+echo   Please wait, this may take a minute.
 echo =======================================================
 
-:: 核心：一键静默安装所有必须的第三方库，加上引号防止 cmd 报错
-pip install paramiko pandas openpyxl "qrcode[pil]" pillow requests
+python -m pip install pandas paramiko openpyxl "qrcode[pil]" pillow requests -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 echo.
 echo =======================================================
-echo   ✅ 所有基础环境已准备就绪！即将启动服务器配置向导...
+echo   [SUCCESS] Environment is ready! Starting setup...
 echo =======================================================
 echo.
 
-:: 启动你原来的配置引导
 python init_setup.py
+
+echo.
+echo =======================================================
+echo   [SUCCESS] Setup complete! Starting main program...
+echo =======================================================
+pause
+
+python run_all.py
 
 pause
