@@ -3,6 +3,11 @@
 wget -N https://raw.githubusercontent.com/XHAO05/freevpn/main/youtube_live/server/install.sh && bash install.sh
 ```
 
+## 修改推流地址/秘钥命令
+```
+bash /root/youtube_live/server/change_key.sh
+```
+
 ## 聚合订阅链接
 ```
 https://raw.githubusercontent.com/XHAO05/freevpn/refs/heads/main/node_aggregator/sub1.txt
