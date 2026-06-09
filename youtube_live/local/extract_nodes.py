@@ -1,188 +1,177 @@
-import pandas as pd
-import qrcode
-import re
 import os
-import shutil
-import base64
 import json
-import requests
+import base64
+import urllib.parse
+import urllib.request
+import qrcode
 import socket
+import ipaddress
+import traceback
 import time
-from datetime import datetime
 
-from PIL import Image
-from openpyxl import load_workbook
-from openpyxl.drawing.image import Image as OpenpyxlImage
-from openpyxl.utils import get_column_letter
-from openpyxl.utils.dataframe import dataframe_to_rows
+# ================= 配置区 =================
+TXT_INPUT_FILE = "good_nodes.txt"   # 输入：你要读取的节点文本
+JSON_OUTPUT_FILE = "nodes_info.json" # 输出：汇总数据文件（供下一个渲染脚本读取）
+QR_OUTPUT_DIR = "qr_codes"          # 输出：存放生成的二维码的文件夹
+# ==========================================
 
-def get_real_ip(host):
+def resolve_to_ip(address):
+    """智能解析：如果是域名则尝试转为IP，如果是IP则原样返回"""
+    address = address.strip()
     try:
-        return socket.gethostbyname(host)
-    except Exception:
-        return None
+        ipaddress.ip_address(address)
+        return address 
+    except ValueError:
+        pass 
 
-def get_ip_location(ip):
-    if not ip or ip == "未知":
+    try:
+        real_ip = socket.gethostbyname(address)
+        return real_ip
+    except socket.gaierror:
+        return address
+
+def get_country_by_ip(ip):
+    """
+    在线检测：使用免费的 ip-api 接口查询 IP 对应的真实国家/地区（中文）
+    """
+    if not ip or ip == "unknown":
         return "未知"
-    try:
-        url = f"http://ip-api.com/json/{ip}?lang=zh-CN"
-        response = requests.get(url, timeout=5).json()
-        if response.get('status') == 'success':
-            country = response.get('country', '')
-            city = response.get('city', '')
-            return f"{country} {city}".strip()
-        else:
-            return "查询失败"
-    except Exception:
-        return "网络超时"
-
-def parse_node_info(link):
-    try:
-        protocol = link.split('://')[0].lower()
-        host = "未知"
         
-        if protocol == 'vmess':
-            base64_str = link[8:]
-            base64_str += "=" * ((4 - len(base64_str) % 4) % 4)
-            decoded_str = base64.b64decode(base64_str).decode('utf-8')
-            node_data = json.loads(decoded_str)
-            host = node_data.get('add', '未知')
-        else:
-            match = re.search(r'@([^:/]+)', link)
-            if match:
-                host = match.group(1)
+    # 支持 IPv4 和 IPv6 的中文位置查询
+    url = f"http://ip-api.com/json/{ip}?lang=zh-CN"
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            if data.get("status") == "success":
+                return data.get("country", "未知")
+    except Exception as e:
+        print(f"  ⚠️ 提示: 接口查询 IP [{ip}] 国家失败 (原因: {e})，将启用名字兜底逻辑")
+    return "未知"
+
+def parse_node(url):
+    """
+    智能解析节点，提取：协议、原始地址、地区/节点名称
+    """
+    url = url.strip()
+    protocol = "unknown"
+    raw_host = "unknown"
+    region_name = "未命名" 
+    
+    if not url or "://" not in url:
+        return protocol, raw_host, region_name
+
+    protocol = url.split("://")[0].lower()
+    rest = url.split("://")[1]
+
+    # 提取非 vmess 协议的别名/名称（通常在 # 之后）
+    if protocol != "vmess" and "#" in rest:
+        encoded_name = rest.split("#")[1]
+        region_name = urllib.parse.unquote(encoded_name)
+
+    try:
+        if protocol == "vmess":
+            b64_str = rest
+            b64_str += "=" * ((4 - len(b64_str) % 4) % 4)
+            node_data = json.loads(base64.b64decode(b64_str).decode('utf-8'))
+            raw_host = node_data.get("add", "unknown")
+            region_name = node_data.get("ps", "未命名")
+            
+        elif protocol in ["vless", "trojan"]:
+            if "@" in rest:
+                host_part = rest.split("@")[1].split("/")[0].split("?")[0].split("#")[0]
+                raw_host = host_part.split(":")[0]
                 
-        ip = get_real_ip(host) if host != "未知" else "未知"
-        return protocol, ip
-        
-    except Exception as e:
-        return "未知", "未知"
-
-
-def process_nodes(target_file):
-    print(f"正在读取原文件 [{target_file}] 的第一个工作表...")
-    
-    try:
-        df = pd.read_excel(target_file, sheet_name=0, header=None, usecols=[0])
-        df.columns = ['原始链接']
-        df = df.dropna(subset=['原始链接'])
-    except Exception as e:
-        print(f"❌ 读取 Excel 失败: {e}")
-        return
-
-    # --- 【WPS挤压数据自动拆解补丁】 ---
-    if len(df) >= 1 and '\n' in str(df.iloc[0]['原始链接']):
-        print("检测到数据被挤压在单个单元格，正在自动拆分换行...")
-        raw_text = str(df.iloc[0]['原始链接'])
-        split_links = [link.strip() for link in raw_text.split('\n') if link.strip()]
-        df = pd.DataFrame({'原始链接': split_links})
-
-    if df.empty:
-        print("❌ 错误：表格里没有任何数据！请检查影刀粘贴动作。")
-        return
-    
-    # --- 【清理防残留机制】彻底删除旧二维码重建 ---
-    if os.path.exists("qr_codes"):
-        shutil.rmtree("qr_codes")
-    os.makedirs("qr_codes")
-        
-    print(f"开始处理 {len(df)} 个节点，正在查询 IP 并记录时间...")
-    
-    protocols, ips, locations, test_times, qr_paths = [], [], [], [], []    
-    
-    for i, row in df.iterrows():
-        link = str(row['原始链接'])
-        
-        proto, ip = parse_node_info(link)
-        location = get_ip_location(ip)
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # 恢复你原本的超详细日志打印
-        print(f"[{current_time}] 节点 {i+1} -> IP: {ip} -> 地区: {location}")
-        
-        time.sleep(1.2)
-        
-        qr_path = f"qr_codes/node_{i}.png"
-        qr = qrcode.QRCode(
-            version=None,
-            error_correction=qrcode.constants.ERROR_CORRECT_M,
-            box_size=10, 
-            border=2,
-        )
-        qr.add_data(link)
-        qr.make(fit=True)
-        img_raw = qr.make_image(fill_color="black", back_color="white")
-        
-        # 强行将原图拉伸到 1000x1000 像素高清底图
-        img_high_res = img_raw.resize((1000, 1000), Image.NEAREST)
-        img_high_res.save(qr_path)
-        
-        protocols.append(proto)
-        ips.append(ip)
-        locations.append(location)
-        test_times.append(current_time)
-        qr_paths.append(qr_path)
-        
-    df['协议类型'] = protocols
-    df['服务器IP'] = ips
-    df['IP归属地'] = locations
-    df['测试时间'] = test_times
-    df['二维码图'] = "" 
-    
-    if '序号' in df.columns:
-        df = df.drop(columns=['序号'])
-    df.insert(0, '序号', range(1, len(df) + 1))
-
-    try:
-        wb = load_workbook(target_file)
-        
-        if len(wb.sheetnames) > 1:
-            target_sheet_name = wb.sheetnames[1]
-            ws = wb[target_sheet_name]
+        elif protocol == "ss":
+            if "@" in rest:
+                host_part = rest.split("@")[1].split("/")[0].split("?")[0].split("#")[0]
+                raw_host = host_part.split(":")[0]
+            else:
+                b64_str = rest.split("#")[0]
+                b64_str += "=" * ((4 - len(b64_str) % 4) % 4)
+                decoded = base64.b64decode(b64_str).decode('utf-8')
+                if "@" in decoded:
+                    host_part = decoded.split("@")[1]
+                    raw_host = host_part.split(":")[0]
+                    
         else:
-            ws = wb.create_sheet("当天整理")
-            target_sheet_name = ws.title
+            if "@" in rest:
+                host_part = rest.split("@")[1].split("/")[0].split("?")[0].split("#")[0]
+                raw_host = host_part.split(":")[0]
+    except Exception as e:
+        print(f"  ⚠️ 解析细节出错: {e}")
 
-        # --- 【清理防残留机制】暴力删除目标表格中的所有旧行 ---
-        ws._images = []
-        if ws.max_row > 0:
-            ws.delete_rows(1, ws.max_row)
+    return protocol, raw_host, region_name
 
-        for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), 1):
-            for c_idx, value in enumerate(row, 1):
-                ws.cell(row=r_idx, column=c_idx, value=value)
+def main():
+    if not os.path.exists(QR_OUTPUT_DIR):
+        os.makedirs(QR_OUTPUT_DIR)
 
-        def set_col_width(col_name, width):
-            if col_name in df.columns:
-                col_idx = df.columns.get_loc(col_name) + 1
-                col_letter = get_column_letter(col_idx)
-                ws.column_dimensions[col_letter].width = width
+    if not os.path.exists(TXT_INPUT_FILE):
+        print(f"❌ 找不到文件: {TXT_INPUT_FILE}，请确保它和脚本在同一目录下！")
+        return
 
-        set_col_width('序号', 8)
-        set_col_width('服务器IP', 16)
-        set_col_width('IP归属地', 20)
-        set_col_width('测试时间', 20)
-        set_col_width('二维码图', 14)
+    with open(TXT_INPUT_FILE, "r", encoding="utf-8") as f:
+        node_urls = [line.strip() for line in f if line.strip()]
+
+    print(f"📦 共读取到 {len(node_urls)} 个节点，开始执行『全自动信息提取与国家检测』...\n")
+    
+    nodes_data_list = []
+
+    for index, url in enumerate(node_urls):
+        # 1. 基础解析
+        protocol, raw_host, region_name = parse_node(url)
+        real_ip = resolve_to_ip(raw_host)
         
-        image_col_idx = df.columns.get_loc('二维码图') + 1
-        image_col_letter = get_column_letter(image_col_idx)
+        # 2. 自动检测国家地理位置
+        print(f"🔄 [{index}] 正在检测真实国家地区 (IP: {real_ip})...")
+        detected_country = get_country_by_ip(real_ip)
         
-        for i, path in enumerate(qr_paths):
-            row_index = i + 2  
-            ws.row_dimensions[row_index].height = 90
-            
-            img = OpenpyxlImage(path)
-            img.width = 800
-            img.height = 800
-            ws.add_image(img, f"{image_col_letter}{row_index}")
-            
-        wb.save(target_file)
-        wb.close()
-        print(f"\n大功告成！已无损覆盖 [{target_file}]。请打开表格进行一键嵌入操作！")
+        # 3. 智能兜底：如果在线接口没查到，就拿节点别名的前两个字（比如 韩国、日本、香港）当作国家
+        if (detected_country == "未知" or not detected_country) and region_name != "未命名":
+            detected_country = region_name[:2]
         
-    except PermissionError:
-        print(f"\n⚠️ 写入失败：[{target_file}] 正在被打开！")
-        print("💡 请先关闭该 Excel 表格，然后重新运行脚本。")
+        # 4. 生成二维码（100%保持原始url，确保扫码可用）
+        qr_filename = f"node_{index}.png"
+        qr_filepath = os.path.join(QR_OUTPUT_DIR, qr_filename)
+        img = qrcode.make(url)
+        img.save(qr_filepath)
+        
+        # 5. 组装完整且精准匹配的数据链条
+        node_dict = {
+            "id": index,
+            "url": url,                 # 原始链接
+            "protocol": protocol,       # 协议类型
+            "name_region": region_name, # 原始节点名
+            "raw_host": raw_host,       # 原始Host
+            "ip": real_ip,              # 真实数字IP
+            "country": detected_country,# 自动检测出的国家/地区（渲染脚本的核心数据）
+            "qr_image": qr_filepath     # 二维码路径
+        }
+        nodes_data_list.append(node_dict)
+        
+        print(f"   ➔ 检测结果: 协议={protocol.upper()} | 国家={detected_country} | 别名={region_name}\n")
+        
+        # 频率控制：免费接口请求太快容易被封，稍微暂停 0.3 秒，保证稳定
+        time.sleep(0.3)
 
-process_nodes("节点统计.xlsx")
+    # 6. 保存为完美的结构化 JSON，供下一步渲染直接读取
+    with open(JSON_OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(nodes_data_list, f, indent=4, ensure_ascii=False)
+
+    print("-" * 50)
+    print(f"🎉 全部处理完成！")
+    print(f"👉 包含所有国家、协议、IP和二维码路径的数据已保存至: {JSON_OUTPUT_FILE}")
+    print(f"👉 下一步脚本（图片渲染脚本）直接读取这个 JSON 即可完美匹配，绝不错位！")
+
+# ================= 核心防闪退逻辑 =================
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print("\n" + "="*50)
+        print("❌ 糟糕，脚本运行中途报错了！")
+        traceback.print_exc() 
+        print("="*50 + "\n")
+    finally:
+        input("👉 运行结束，请按回车键 (Enter) 关闭窗口...")

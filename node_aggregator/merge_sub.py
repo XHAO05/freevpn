@@ -72,6 +72,10 @@ def save_sub_file(nodes_list, filename):
 
 # ==================== 主程序逻辑 ====================
 
+# 初始化空列表，防止因网络问题抓取失败导致后续变量未定义
+nodes_a = []
+nodes_b = []
+
 # 🚀 第一步：处理优质 A 组，合流并直接生成 sub1.txt
 nodes_a = fetch_and_clean_nodes(GROUP_A_URLS, "A组-优质常规源")
 if nodes_a:
@@ -89,7 +93,6 @@ if nodes_b:
     # 循环生成后面的 4 个文档 (sub2, sub3, sub4, sub5)
     for i in range(4):
         file_num = i + 2  # 从 sub2 开始
-        # 👇 核心修改：将跨度从 200 改为 500
         start_idx = i * 500
         end_idx = start_idx + 500
         
@@ -103,4 +106,17 @@ if nodes_b:
 else:
     print("⚠️ 警告：B组未获取到任何节点，后续盲盒文件未生成")
 
-print("\n✅ 扩容版规则执行完毕！等待 GitHub Actions 自动同步回仓库。")
+print("-" * 50)
+
+# 🚀 第三步：生成包含所有节点的全量汇总文件
+print("🚀 开始生成全量节点汇总文件...")
+# 将 A 组和 B 组相加，并再次使用 set() 进行全局去重，防止两个组之间有重复的节点
+all_nodes = list(set(nodes_a + nodes_b))
+
+if all_nodes:
+    # 你可以把 sub_all.txt 改成你想要的汇总文件名
+    save_sub_file(all_nodes, "sub_all.txt") 
+else:
+    print("⚠️ 警告：A组和B组均未获取到任何节点，汇总文件未生成")
+
+print("\n✅ 扩容版规则及全量汇总执行完毕！等待 GitHub Actions 自动同步回仓库。")
