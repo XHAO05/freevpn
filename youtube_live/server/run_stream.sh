@@ -1,6 +1,7 @@
 #!/bin/bash
 
-STREAM_URL="rtmp://a.rtmp.youtube.com/live2/pcjq-f3ta-6vvw-hxc8-9701"
+# 这里使用了占位符，等待 install.sh 来动态替换它们
+STREAM_URL="URL_REPLACE_ME/REPLACE_ME"
 
 ffmpeg \
 -re -f image2 -loop 1 -framerate 1 -i /root/live/current.png \
