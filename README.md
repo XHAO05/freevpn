@@ -5,7 +5,7 @@ wget -N https://raw.githubusercontent.com/XHAO05/freevpn/main/youtube_live/serve
 
 ## 修改推流地址/秘钥命令
 ```
-bash /root/youtube_live/server/change_key.sh
+bash /root/live/change_key.sh
 ```
 ## 启动【换图引擎】：
 ```
