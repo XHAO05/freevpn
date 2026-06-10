@@ -48,10 +48,12 @@ apt-get install ffmpeg screen fonts-dejavu-core -y
 
 # 4. 配置脚本中的占位符
 echo "--> 正在执行自动化配置..."
-# 替换推流密钥
-sed -i "s|REPLACE_ME|$user_stream_key|g" $LIVE_DIR/run_stream.sh
-# 替换推流地址 (去掉了这行前面的注释符号，让它生效)
+
+# 【修改这里】：先替换推流地址 (因为它的占位符更长)
 sed -i "s|URL_REPLACE_ME|$user_stream_url|g" $LIVE_DIR/run_stream.sh
+
+# 再替换推流密钥
+sed -i "s|REPLACE_ME|$user_stream_key|g" $LIVE_DIR/run_stream.sh
 
 # 5. 赋予执行权限
 chmod +x $LIVE_DIR/*.sh
