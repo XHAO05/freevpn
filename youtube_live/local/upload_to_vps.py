@@ -1,6 +1,7 @@
 import paramiko
 import os
 import json
+import time  # 👈 新增：引入时间模块，用来控制上传节奏
 
 def upload_to_vps():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -34,7 +35,7 @@ def upload_to_vps():
         print("连接成功！正在清理远程旧图片...")
         ssh.exec_command(f"rm -f {remote_dir}*.png")
         
-        print("清理完毕，开始同步最新节点图...")
+        print("清理完毕，开始限速同步最新节点图...")
         sftp = ssh.open_sftp()
         
         if not os.path.exists(local_dir):
@@ -46,8 +47,23 @@ def upload_to_vps():
             if file.endswith('.png'):
                 local_path = os.path.join(local_dir, file)
                 remote_path = remote_dir + file
-                sftp.put(local_path, remote_path)
-                print(f"  -> 成功上传: {file}")
+                
+                print(f"  -> 正在上传: {file} ...")
+                
+                # 👇 【核心修改区：弃用暴力的 sftp.put，改为温和的“切片+打盹”限速模式】
+                chunk_size = 1024 * 16  # 每次读取 16KB 数据包
+                
+                # 同时打开本地文件(读取)和远程文件(写入)
+                with open(local_path, 'rb') as local_file, sftp.open(remote_path, 'wb') as remote_file:
+                    while True:
+                        chunk = local_file.read(chunk_size)
+                        if not chunk:
+                            break # 读完了就退出循环
+                        remote_file.write(chunk)
+                        
+                        # 强制休息 0.15 秒 (算下来大约是 100KB/s 的安全速度)
+                        time.sleep(0.15) 
+                        
                 upload_count += 1
                 
         sftp.close()
