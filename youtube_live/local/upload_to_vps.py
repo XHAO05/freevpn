@@ -9,7 +9,7 @@ def upload_to_vps():
 
     # 1. 安全拦截：如果没有配置文件，提示先去配置
     if not os.path.exists(config_path):
-        print("❌ 找不到服务器配置文件！请先双击运行 init_setup.py 进行初始设置。")
+        print("[错误] 找不到服务器配置文件！请先双击运行 init_setup.py 进行初始设置。")
         return
 
     # 2. 读取配置文件中的敏感信息
@@ -24,6 +24,15 @@ def upload_to_vps():
     local_dir = os.path.join(BASE_DIR, "live_images")
     remote_dir = '/root/live/images/'
 
+    if not os.path.exists(local_dir):
+        print(f"[错误] 找不到本地图片文件夹: {local_dir}")
+        return
+
+    png_files = [f for f in os.listdir(local_dir) if f.endswith('.png')]
+    if len(png_files) < 2:
+        print(f"[提示] 本地仅有 {len(png_files)} 张图片，少于 2 张，跳过本次上传。")
+        return
+
     # 3. 开始执行上传逻辑
     print(f"正在建立与 VPS ({host}) 的加密连接...")
     ssh = paramiko.SSHClient()
@@ -37,10 +46,6 @@ def upload_to_vps():
         
         print("清理完毕，开始限速同步最新节点图...")
         sftp = ssh.open_sftp()
-        
-        if not os.path.exists(local_dir):
-            print(f"❌ 找不到本地图片文件夹: {local_dir}")
-            return
 
         upload_count = 0
         for file in os.listdir(local_dir):
@@ -67,12 +72,14 @@ def upload_to_vps():
                 upload_count += 1
                 
         sftp.close()
-        print(f"✅ 完美！共同步了 {upload_count} 张直播图片！")
+        print(f"[完成] 共同步了 {upload_count} 张直播图片！")
         
     except Exception as e:
-        print(f"❌ 上传过程发生严重错误: {e}")
+        print(f"[错误] 上传过程发生严重错误: {e}")
     finally:
         ssh.close()
 
 if __name__ == "__main__":
     upload_to_vps()
+    print("\n执行完毕，窗口将在 5 秒后自动关闭...")
+    time.sleep(5)
